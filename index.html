@@ -1,0 +1,350 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { 
+  Cat, ShoppingBag, MessageCircle, Plus, Calendar, Heart, Trash2, Copy, 
+  Search, ChevronRight, AlertCircle, Send, User, Edit2, Clock, 
+  TrendingUp, Weight, Cake, ArrowRight, Droplets, Sparkles, Home, 
+  List, Wallet, DollarSign, PieChart, Gift, Settings, Loader2, X, Camera, Pencil, Settings2
+} from 'lucide-react';
+
+// --- 0. 秘密配置區 ---
+const NOTION_TOKEN = "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";
+const DATABASE_ID = "2e74aadef2de80959e8cd530c8321556";
+const PROXY_URL = "https://corsproxy.io/?"; // 繞過瀏覽器限制
+const GEMINI_API_KEY = ""; // 請在此填入妳的 Gemini Key
+
+// --- 1. 全局配置與工具函數 ---
+const CATEGORIES = [
+  { id: '罐罐', label: '罐罐', emoji: '🥫', color: 'text-red-600', bg: 'bg-red-50', barColor: 'bg-red-500' },
+  { id: '飼料', label: '飼料', emoji: '🍪', color: 'text-amber-700', bg: 'bg-amber-50', barColor: 'bg-amber-500' },
+  { id: '貓砂', label: '貓砂', emoji: '🏖️', color: 'text-blue-600', bg: 'bg-blue-50', barColor: 'bg-blue-500' },
+  { id: '保健', label: '保健', emoji: '💊', color: 'text-emerald-700', bg: 'bg-emerald-50', barColor: 'bg-emerald-500' },
+  { id: '戰利品', label: '戰利品', emoji: '🎁', color: 'text-rose-600', bg: 'bg-rose-50', barColor: 'bg-rose-500' },
+  { id: '醫療', label: '醫療', emoji: '🏥', color: 'text-rose-700', bg: 'bg-rose-50', barColor: 'bg-rose-600' },
+  { id: '用具', label: '用具', emoji: '🧤', color: 'text-purple-700', bg: 'bg-purple-50', barColor: 'bg-purple-500' },
+  { id: '零食', label: '零食', emoji: '🍗', color: 'text-orange-700', bg: 'bg-orange-50', barColor: 'bg-orange-500' },
+];
+
+const getCategoryInfo = (id) => CATEGORIES.find(c => c.id === id) || CATEGORIES[0];
+
+const calculateDaysDiff = (date1, date2) => {
+  if (!date1 || !date2) return 0;
+  const d1 = new Date(date1);
+  const d2 = new Date(date2);
+  const diffTime = d1.getTime() - d2.getTime();
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
+const formatPrice = (price) => {
+  const numPrice = Number(price);
+  if (isNaN(numPrice)) return 'NT$0';
+  return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(numPrice);
+};
+
+// --- 2. 核心功能：Notion & Gemini API ---
+
+// 投信到 Notion
+const saveToNotion = async (item) => {
+  const url = `${PROXY_URL}https://api.notion.com/v1/pages`;
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${NOTION_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Notion-Version': '2022-06-28'
+      },
+      body: JSON.stringify({
+        parent: { database_id: DATABASE_ID },
+        properties: {
+          "Name": { title: [{ text: { content: `${getCategoryInfo(item.category).emoji} ${item.brand}` } }] },
+          "Content": { rich_text: [{ text: { content: `分類: ${item.category}\n金額: NT$${item.price}\n評價: ${item.rating}顆星\n備註: ${item.comment || '無'}` } }] }
+        }
+      })
+    });
+    return response.ok;
+  } catch (error) {
+    console.error("Notion Sync Error:", error);
+    return false;
+  }
+};
+
+const callGeminiAPI = async (userQuery, profile, items, waterConfig) => {
+  const systemPrompt = `你是一位專業且幽默的黑貓管家顧問「Gemini」。主人是 Janine，黑貓叫 Elven。Elven 資料：生日 ${profile.birthday}，體重 ${profile.weight}kg。任務：以 Z 世代幽默感回覆，多用 🐈‍⬛，絕不叫主人 baby。`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`;
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: userQuery }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] }
+      })
+    });
+    const result = await response.json();
+    return result.candidates?.[0]?.content?.parts?.[0]?.text || "🐈‍⬛ 報告主人，管家現在斷訊中。";
+  } catch (error) { return "連線貓咪星球失敗 😿"; }
+};
+
+// --- 3. UI 組件 ---
+
+function WaterStation({ waterConfig, setWaterConfig, lastDate, onClean }) {
+  const [showConfig, setShowConfig] = useState(false);
+  const diff = calculateDaysDiff(new Date(), lastDate);
+  const percent = Math.max(0, Math.min(100, 100 - (diff / waterConfig.cycle) * 100));
+  let themeColor = percent < 30 ? "text-red-600" : percent < 60 ? "text-orange-600" : "text-green-600";
+  let barColor = percent < 30 ? "bg-red-500" : percent < 60 ? "bg-orange-500" : "bg-green-500";
+
+  return (
+    <div className="bg-white p-6 rounded-[2.5rem] border border-stone-100 mb-8 shadow-sm">
+      <div className="flex justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className={`w-12 h-12 bg-stone-50 rounded-2xl flex items-center justify-center shadow-inner ${themeColor}`}>
+            <Droplets size={24} className={percent < 30 ? "animate-pulse" : ""} />
+          </div>
+          <div>
+            <h4 className="font-black text-sm text-stone-800">水碗新鮮度 🐈‍⬛</h4>
+            <p className={`text-[10px] font-black uppercase tracking-tighter ${themeColor}`}>{percent < 30 ? 'Needs Cleaning' : 'Water Fresh'}</p>
+          </div>
+        </div>
+        <button onClick={() => setShowConfig(!showConfig)} className="p-2 rounded-xl text-stone-300 bg-stone-50"><Settings2 size={20} /></button>
+      </div>
+      {showConfig ? (
+        <input type="range" min="1" max="14" value={waterConfig.cycle} onChange={(e) => setWaterConfig({...waterConfig, cycle: parseInt(e.target.value)})} className="w-full my-4 accent-stone-800" />
+      ) : (
+        <div className="space-y-5">
+          <div className="h-3 bg-stone-50 rounded-full border border-stone-100 p-0.5 shadow-inner">
+            <div style={{ width: `${percent}%` }} className={`h-full rounded-full ${barColor} transition-all duration-1000`}></div>
+          </div>
+          <div className="flex justify-between items-center bg-stone-50 p-3 rounded-2xl">
+            <span className="text-[10px] font-bold text-stone-400">上次清洗: {new Date(lastDate).toLocaleDateString()}</span>
+            <button onClick={onClean} className="px-5 py-2 bg-stone-900 text-white rounded-xl text-xs font-black shadow-lg">Reset Now</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FinanceDashboard({ items }) {
+  const stats = useMemo(() => {
+    const total = items.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
+    const categories = CATEGORIES.map(cat => ({
+      ...cat,
+      amount: items.filter(i => i.category === cat.id).reduce((acc, i) => acc + (Number(i.price) || 0), 0)
+    })).filter(c => c.amount > 0).sort((a,b) => b.amount - a.amount);
+    return { total, categories };
+  }, [items]);
+
+  return (
+    <div className="p-6 pt-12 animate-in pb-32">
+      <h1 className="text-2xl font-black text-stone-800 mb-8 uppercase">Finance 💰</h1>
+      <div className="bg-stone-900 p-8 rounded-[3rem] text-white shadow-2xl mb-8">
+        <p className="text-[10px] font-black opacity-50 uppercase tracking-widest">Total Spending</p>
+        <div className="text-4xl font-black tracking-tighter">{formatPrice(stats.total)}</div>
+      </div>
+      <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-stone-50 space-y-6">
+        {stats.categories.map(c => (
+          <div key={c.id}>
+            <div className="flex justify-between text-xs font-black mb-2">
+              <span className="flex items-center gap-2"><span>{c.emoji}</span> {c.label}</span>
+              <span>{formatPrice(c.amount)}</span>
+            </div>
+            <div className="h-2 w-full bg-stone-50 rounded-full overflow-hidden">
+              <div className={`h-full ${c.barColor}`} style={{ width: `${(c.amount/stats.total*100)}%` }}></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AddEditModal({ isOpen, onClose, onSave, initialData }) {
+  const [formData, setFormData] = useState({ category: '罐罐', brand: '', price: '', purchaseDate: new Date().toISOString().split('T')[0], rating: 5, comment: '' });
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && initialData) setFormData({ ...initialData, id: initialData.isTemplate ? undefined : initialData.id });
+    else if (isOpen) setFormData({ category: '罐罐', brand: '', price: '', purchaseDate: new Date().toISOString().split('T')[0], rating: 5, comment: '' });
+  }, [initialData, isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] p-4">
+      <div className="bg-white w-full max-w-md rounded-[3rem] p-8 shadow-2xl overflow-y-auto no-scrollbar max-h-[90vh]">
+        <div className="flex justify-between mb-8">
+          <h2 className="text-2xl font-black text-stone-800">📝 記錄紀錄</h2>
+          <button onClick={onClose}><X size={20}/></button>
+        </div>
+        <form onSubmit={async (e) => { 
+          e.preventDefault(); 
+          setSyncing(true);
+          await onSave(formData); 
+          setSyncing(false);
+          onClose(); 
+        }} className="space-y-6">
+          <div className="grid grid-cols-2 gap-2">
+            {CATEGORIES.map(cat => (
+              <button key={cat.id} type="button" onClick={() => setFormData({...formData, category: cat.id})} className={`p-3 rounded-2xl border-2 font-black text-xs ${formData.category === cat.id ? 'bg-stone-900 text-white border-stone-900' : 'bg-white border-stone-100'}`}>{cat.emoji} {cat.label}</button>
+            ))}
+          </div>
+          <input required placeholder="品牌名稱" className="w-full bg-stone-50 p-4 rounded-2xl border-none font-bold" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})}/>
+          <input type="number" placeholder="金額" className="w-full bg-stone-50 p-4 rounded-2xl border-none font-black text-2xl" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})}/>
+          <div className="flex gap-4 justify-center bg-stone-50 py-4 rounded-[2rem]">
+            {[1, 2, 3, 4, 5].map(s => (<button key={s} type="button" onClick={() => setFormData({...formData, rating: s})}><Heart size={32} className={s <= formData.rating ? 'fill-orange-500 text-orange-500' : 'text-stone-200'} /></button>))}
+          </div>
+          <textarea placeholder="備註..." className="w-full p-4 bg-stone-50 rounded-2xl border-none text-sm" value={formData.comment} onChange={e => setFormData({...formData, comment: e.target.value})}/>
+          <button disabled={syncing} type="submit" className="w-full bg-stone-900 text-white font-black py-5 rounded-[2rem] shadow-xl flex justify-center items-center gap-2">
+            {syncing ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+            {syncing ? '同步中...' : 'Confirm & Save'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// 刪除確認組件 (補完原本漏掉的)
+function ConfirmDeleteModal({ onConfirm, onCancel }) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[300] p-6">
+      <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-xs text-center">
+        <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 size={32}/></div>
+        <h3 className="text-xl font-black text-stone-800 mb-2">確定刪除？</h3>
+        <p className="text-sm text-stone-400 mb-6">這筆紀錄將從手機中移除</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 py-4 bg-stone-100 rounded-2xl font-black text-stone-400">取消</button>
+          <button onClick={onConfirm} className="flex-1 py-4 bg-red-500 rounded-2xl font-black text-white">刪除</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- 4. 主程式 App ---
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('home');
+  const [items, setItems] = useState(() => JSON.parse(localStorage.getItem('cat_log_v88')) || []);
+  const [profile, setProfile] = useState(() => JSON.parse(localStorage.getItem('cat_profile_v88')) || { name: 'Elven', birthday: '2020-01-01', weight: '5.2' });
+  const [waterCleanDate, setWaterCleanDate] = useState(() => new Date(localStorage.getItem('cat_water_v88') || Date.now()));
+  const [waterConfig, setWaterConfig] = useState(() => JSON.parse(localStorage.getItem('cat_water_cfg_v88')) || { cycle: 3 });
+  const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
+  const [modalInitialData, setModalInitialData] = useState(null);
+  const [deleteId, setDeleteId] = useState(null);
+
+  useEffect(() => { localStorage.setItem('cat_log_v88', JSON.stringify(items)); }, [items]);
+  useEffect(() => { localStorage.setItem('cat_profile_v88', JSON.stringify(profile)); }, [profile]);
+  useEffect(() => { localStorage.setItem('cat_water_v88', waterCleanDate.toISOString()); }, [waterCleanDate]);
+
+  const handleSaveItem = async (data) => {
+    // 1. 同步到本地
+    if (data.id) {
+      setItems(prev => prev.map(i => i.id === data.id ? data : i));
+    } else {
+      const newItem = { ...data, id: Date.now() };
+      setItems(prev => [newItem, ...prev]);
+      // 2. 同步到 Notion (僅新增時自動同步)
+      await saveToNotion(newItem);
+    }
+  };
+
+  return (
+    <div className="h-screen w-full bg-stone-900 flex justify-center items-center">
+      <div className="w-full max-w-md h-full bg-stone-50 sm:rounded-[3.5rem] overflow-hidden flex flex-col relative shadow-2xl">
+        <div className="flex-1 overflow-y-auto pb-24">
+          {activeTab === 'home' && (
+            <div className="p-6 pt-12 animate-in">
+              <div className="bg-white p-7 rounded-[2.8rem] shadow-sm mb-8">
+                <div className="flex items-center gap-6">
+                  <div className="w-24 h-24 rounded-[2.2rem] bg-stone-900 flex items-center justify-center text-4xl border-4 border-white shadow-xl">🐈‍⬛</div>
+                  <div>
+                    <h2 className="text-3xl font-black text-stone-900">{profile.name}</h2>
+                    <p className="text-stone-400 text-[10px] font-black uppercase tracking-widest">Master Cat</p>
+                  </div>
+                </div>
+              </div>
+              <WaterStation waterConfig={waterConfig} setWaterConfig={setWaterConfig} lastDate={waterCleanDate} onClean={() => setWaterCleanDate(new Date())} />
+            </div>
+          )}
+
+          {activeTab === 'records' && (
+            <div className="p-6 pt-12 space-y-4">
+              <h1 className="text-3xl font-black text-stone-900 mb-6 uppercase">Shopping Log 🐈‍⬛</h1>
+              {items.map(item => (
+                <div key={item.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-stone-50 flex justify-between items-center">
+                  <div>
+                    <p className="text-[10px] font-black text-stone-300 uppercase">{item.category}</p>
+                    <h3 className="text-lg font-black text-stone-800">{item.brand}</h3>
+                    <p className="text-xl font-black text-stone-900 mt-2">{formatPrice(item.price)}</p>
+                  </div>
+                  <button onClick={() => setDeleteId(item.id)} className="p-3 text-stone-200 hover:text-red-500"><Trash2 size={20}/></button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 'expenses' && <FinanceDashboard items={items} />}
+          {activeTab === 'ai' && <AIConsultantView profile={profile} items={items} waterConfig={waterConfig} />}
+        </div>
+
+        {/* 下方導覽列 */}
+        <div className="bg-white border-t border-stone-100 px-6 py-5 flex justify-between items-center absolute bottom-0 w-full pb-10 rounded-t-[3rem]">
+          {[ { id: 'home', icon: Home, label: '概況' }, { id: 'records', icon: List, label: '清單' }, { id: 'expenses', icon: Wallet, label: '財務' }, { id: 'ai', icon: MessageCircle, label: '顧問' } ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-1.5 flex-1 ${activeTab === tab.id ? 'text-stone-900' : 'text-stone-300'}`}>
+              <tab.icon size={24} strokeWidth={activeTab === tab.id ? 3 : 2} />
+              <span className="text-[10px] font-black uppercase">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+        
+        {activeTab === 'records' && (
+          <button onClick={() => { setModalInitialData(null); setIsAddEditModalOpen(true); }} className="absolute bottom-32 right-8 w-16 h-16 bg-stone-900 text-white rounded-[1.8rem] shadow-2xl flex items-center justify-center active:scale-90 transition-all z-30">
+            <Plus size={32} strokeWidth={4} />
+          </button>
+        )}
+
+        <AddEditModal isOpen={isAddEditModalOpen} onClose={() => setIsAddEditModalOpen(false)} onSave={handleSaveItem} initialData={modalInitialData} />
+        {deleteId && <ConfirmDeleteModal onConfirm={()=>{setItems(prev=>prev.filter(i=>i.id!==deleteId)); setDeleteId(null);}} onCancel={()=>setDeleteId(null)} />}
+      </div>
+    </div>
+  );
+}
+
+// 補上 AI 顧問視圖組件
+function AIConsultantView({ profile, items, waterConfig }) {
+  const [messages, setMessages] = useState([{ id: 1, type: 'bot', text: '🐈‍⬛ 報告主人 Janine，管家已上線。有什麼想問的嗎？' }]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSend = async () => {
+    if (!input.trim() || loading) return;
+    const text = input;
+    setMessages(prev => [...prev, { id: Date.now(), type: 'user', text }]);
+    setInput('');
+    setLoading(true);
+    const reply = await callGeminiAPI(text, profile, items, waterConfig);
+    setMessages(prev => [...prev, { id: Date.now()+1, type: 'bot', text: reply }]);
+    setLoading(false);
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-stone-50 p-5">
+      <div className="flex-1 overflow-y-auto space-y-4 mb-4 no-scrollbar">
+        {messages.map(msg => (
+          <div key={msg.id} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[80%] p-4 rounded-3xl text-sm ${msg.type === 'user' ? 'bg-stone-900 text-white' : 'bg-white border border-stone-100'}`}>{msg.text}</div>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 pb-10">
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter' && handleSend()} className="flex-1 p-4 rounded-full bg-white shadow-inner outline-none text-sm" placeholder="問問管家..." />
+        <button onClick={handleSend} className="p-4 bg-stone-900 text-white rounded-full"><Send size={20}/></button>
+      </div>
+    </div>
+  );
+}
+
+const Save = ({ size }) => <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />;
