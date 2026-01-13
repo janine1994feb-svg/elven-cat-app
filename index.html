@@ -1,4 +1,24 @@
-const { useState, useEffect, useRef, useMemo } = React;
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Elven's Life 🐈‍⬛</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        body { -webkit-tap-highlight-color: transparent; }
+    </script>
+</head>
+<body class="bg-stone-900">
+    <div id="root"></div>
+
+    const { useState, useEffect, useRef, useMemo } = React;
         // 加上安全檢查，防止 Lucide 沒載入成功
         const icons = window.lucide || {};
         const { 
