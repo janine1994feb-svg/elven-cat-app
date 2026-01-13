@@ -13,20 +13,19 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         body { -webkit-tap-highlight-color: transparent; }
-    </script>
+    </style>
 </head>
 <body class="bg-stone-900">
     <div id="root"></div>
 
-    const { useState, useEffect, useRef, useMemo } = React;
-        // 加上安全檢查，防止 Lucide 沒載入成功
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
         const icons = window.lucide || {};
         const { 
           Cat, ShoppingBag, MessageCircle, Plus, Calendar, Heart, Trash2, 
           Home, List, MessageSquare, Settings, AlertCircle, Loader2, X, Pencil, Trash
         } = icons;
 
-        // --- 0. 配置區 ---
         const CONFIG = {
           NOTION_TOKEN: "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",
           DATABASE_ID: "2e74aadef2de80959e8cd530c8321556",
@@ -41,7 +40,6 @@
           { id: '保健', label: '保健', emoji: '💊' }
         ];
 
-        // --- 工具函式 ---
         const formatPrice = (price) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(Number(price) || 0);
 
         function App() {
@@ -58,7 +56,6 @@
             } catch { return { name: 'Elven', birthday: '2020-01-01', weight: '5.2' }; }
           });
 
-          // 修正：更安全的日期初始化
           const [waterDate, setWaterDate] = useState(() => {
             const saved = localStorage.getItem('cat_water_v88');
             return saved ? new Date(saved) : new Date();
@@ -67,7 +64,6 @@
           useEffect(() => {
             localStorage.setItem('cat_log_v88', JSON.stringify(items));
             localStorage.setItem('cat_profile_v88', JSON.stringify(profile));
-            // 修正：防止 toISOString 崩潰
             if (waterDate instanceof Date && !isNaN(waterDate)) {
               localStorage.setItem('cat_water_v88', waterDate.toISOString());
             }
@@ -91,10 +87,9 @@
 
           return (
             <div className="h-screen w-full flex justify-center items-center bg-stone-900 font-sans antialiased">
-              <div className="w-full max-w-md h-full bg-stone-50 overflow-hidden flex flex-col relative">
+              <div className="w-full max-w-md h-full bg-stone-50 overflow-hidden flex flex-col relative sm:rounded-[3rem]">
                 
-                {/* 內容區 */}
-                <div className="flex-1 overflow-y-auto p-6 pb-32">
+                <div className="flex-1 overflow-y-auto p-6 pb-32 no-scrollbar">
                   {activeTab === 'home' && (
                     <div className="space-y-6">
                       <div className="bg-white p-6 rounded-[2.5rem] shadow-sm flex items-center gap-4 border border-stone-100">
@@ -106,8 +101,8 @@
                       </div>
 
                       <div className="bg-stone-900 p-8 rounded-[2.5rem] text-white">
-                        <p className="text-xs opacity-50 mb-1">本月總支出</p>
-                        <div className="text-3xl font-bold">
+                        <p className="text-xs opacity-50 mb-1 font-bold">TOTAL SPENDING</p>
+                        <div className="text-3xl font-black">
                           {formatPrice(items.reduce((a, b) => a + (Number(b.price) || 0), 0))}
                         </div>
                       </div>
@@ -117,7 +112,7 @@
                         className="w-full bg-blue-50 p-6 rounded-[2rem] flex justify-between items-center group"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="p-3 bg-white rounded-xl shadow-sm">💧</div>
+                          <div className="p-3 bg-white rounded-xl shadow-sm text-xl">💧</div>
                           <div className="text-left">
                             <p className="text-sm font-bold text-blue-900">最後換水時間</p>
                             <p className="text-xs text-blue-400">{waterDate.toLocaleString()}</p>
@@ -130,20 +125,20 @@
 
                   {activeTab === 'records' && (
                     <div className="space-y-4">
-                      <h1 className="text-2xl font-bold mb-4">消費紀錄 📋</h1>
+                      <h1 className="text-2xl font-black mb-4 uppercase italic">Log 📋</h1>
                       {items.length === 0 ? (
                         <p className="text-stone-400 text-center py-10">目前還沒有紀錄喔🐈‍⬛</p>
                       ) : (
                         items.map(item => (
                           <div key={item.id} className="bg-white p-5 rounded-3xl border border-stone-100 flex justify-between items-center shadow-sm">
                             <div>
-                              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-tighter">{item.category}</p>
+                              <p className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">{item.category}</p>
                               <h3 className="font-bold text-stone-800">{item.brand}</h3>
                             </div>
-                            <div className="text-right">
-                              <p className="font-bold text-lg">{formatPrice(item.price)}</p>
-                              <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="text-stone-200">
-                                {Trash && <Trash size={14} />}
+                            <div className="text-right flex flex-col items-end gap-2">
+                              <p className="font-black text-lg">{formatPrice(item.price)}</p>
+                              <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="text-stone-200 hover:text-red-400 transition-colors">
+                                {Trash && <Trash size={16} />}
                               </button>
                             </div>
                           </div>
@@ -153,26 +148,25 @@
                   )}
 
                   {activeTab === 'ai' && (
-                    <div className="h-full flex flex-col items-center justify-center text-stone-400">
-                      <MessageSquare size={48} className="mb-4 opacity-20" />
-                      <p>AI 管家正在梳毛中，稍後片刻...</p>
+                    <div className="h-full flex flex-col items-center justify-center text-stone-300">
+                      <MessageSquare size={64} className="mb-4 opacity-10" />
+                      <p className="font-bold">AI 管家正在梳毛中...</p>
                     </div>
                   )}
                 </div>
 
-                {/* 導覽列 */}
                 <div className="absolute bottom-6 left-6 right-6 h-20 bg-white/80 backdrop-blur-lg rounded-[2.5rem] border border-white shadow-xl flex justify-around items-center px-4">
                   <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-black' : 'text-stone-300'}>
-                    {Home && <Home size={24} />}
+                    {Home && <Home size={24} strokeWidth={2.5} />}
                   </button>
                   <button onClick={() => setActiveTab('records')} className={activeTab === 'records' ? 'text-black' : 'text-stone-300'}>
-                    {List && <List size={24} />}
+                    {List && <List size={24} strokeWidth={2.5} />}
                   </button>
-                  <button onClick={handleQuickAdd} className="w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-transform">
-                    {Plus && <Plus size={24} />}
+                  <button onClick={handleQuickAdd} className="w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-transform">
+                    {Plus && <Plus size={24} strokeWidth={3} />}
                   </button>
                   <button onClick={() => setActiveTab('ai')} className={activeTab === 'ai' ? 'text-black' : 'text-stone-300'}>
-                    {MessageSquare && <MessageSquare size={24} />}
+                    {MessageSquare && <MessageSquare size={24} strokeWidth={2.5} />}
                   </button>
                 </div>
 
@@ -183,3 +177,6 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
+    </script>
+</body>
+</html>
