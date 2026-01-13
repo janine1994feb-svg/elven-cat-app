@@ -1,180 +1,161 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Elven's Life 🐈‍⬛</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        body { -webkit-tap-highlight-color: transparent; }
-    </script>
-</head>
-<body class="bg-stone-900">
-    <div id="root"></div>
-
-    <script type="text/babel">
-        const { useState, useEffect, useRef, useMemo } = React;
+const { useState, useEffect, useRef, useMemo } = React;
+        // 加上安全檢查，防止 Lucide 沒載入成功
+        const icons = window.lucide || {};
         const { 
-          Cat, ShoppingBag, MessageCircle, Plus, Calendar, Heart, Trash2, Copy, 
-          Search, ChevronRight, AlertCircle, Send, User, Edit2, Clock, 
-          TrendingUp, Weight, Cake, ArrowRight, Droplets, Sparkles, Home, 
-          List, Wallet, DollarSign, PieChart, Gift, Settings, Loader2, X, Camera, Pencil, Settings2, Save
-        } = lucide;
+          Cat, ShoppingBag, MessageCircle, Plus, Calendar, Heart, Trash2, 
+          Home, List, MessageSquare, Settings, AlertCircle, Loader2, X, Pencil, Trash
+        } = icons;
 
         // --- 0. 配置區 ---
         const CONFIG = {
           NOTION_TOKEN: "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",
           DATABASE_ID: "2e74aadef2de80959e8cd530c8321556",
-          GEMINI_KEY: "", // 這裡填入妳的 Gemini API Key
+          GEMINI_KEY: "", 
           PROXY: "https://corsproxy.io/?"
         };
 
         const CATEGORIES = [
-          { id: '罐罐', label: '罐罐', emoji: '🥫', color: 'text-red-600', bg: 'bg-red-50', barColor: 'bg-red-500' },
-          { id: '飼料', label: '飼料', emoji: '🍪', color: 'text-amber-700', bg: 'bg-amber-50', barColor: 'bg-amber-500' },
-          { id: '貓砂', label: '貓砂', emoji: '🏖️', color: 'text-blue-600', bg: 'bg-blue-50', barColor: 'bg-blue-500' },
-          { id: '保健', label: '保健', emoji: '💊', color: 'text-emerald-700', bg: 'bg-emerald-50', barColor: 'bg-emerald-500' },
-          { id: '戰利品', label: '戰利品', emoji: '🎁', color: 'text-rose-600', bg: 'bg-rose-50', barColor: 'bg-rose-500' },
-          { id: '醫療', label: '醫療', emoji: '🏥', color: 'text-rose-700', bg: 'bg-rose-50', barColor: 'bg-rose-600' },
-          { id: '用具', label: '用具', emoji: '🧤', color: 'text-purple-700', bg: 'bg-purple-50', barColor: 'bg-purple-500' },
-          { id: '零食', label: '零食', emoji: '🍗', color: 'text-orange-700', bg: 'bg-orange-50', barColor: 'bg-orange-500' },
+          { id: '罐罐', label: '罐罐', emoji: '🥫' },
+          { id: '飼料', label: '飼料', emoji: '🍪' },
+          { id: '貓砂', label: '貓砂', emoji: '🏖️' },
+          { id: '保健', label: '保健', emoji: '💊' }
         ];
 
         // --- 工具函式 ---
-        const getCategoryInfo = (id) => CATEGORIES.find(c => c.id === id) || CATEGORIES[0];
-        const calculateDaysDiff = (date1, date2) => {
-          if (!date1 || !date2) return 0;
-          const d1 = new Date(date1);
-          const d2 = new Date(date2);
-          return Math.ceil((d1.getTime() - d2.getTime()) / (1000 * 60 * 60 * 24));
-        };
         const formatPrice = (price) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(Number(price) || 0);
-
-        // --- API 函式 ---
-        const syncToNotion = async (item) => {
-          try {
-            const response = await fetch(`${CONFIG.PROXY}https://api.notion.com/v1/pages`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${CONFIG.NOTION_TOKEN}`,
-                'Content-Type': 'application/json',
-                'Notion-Version': '2022-06-28'
-              },
-              body: JSON.stringify({
-                parent: { database_id: CONFIG.DATABASE_ID },
-                properties: {
-                  "Name": { title: [{ text: { content: `${getCategoryInfo(item.category).emoji} ${item.brand}` } }] },
-                  "Content": { rich_text: [{ text: { content: `金額: ${item.price}\n評價: ${item.rating}星\n備註: ${item.comment || '無'}` } }] }
-                }
-              })
-            });
-            return response.ok;
-          } catch { return false; }
-        };
-
-        const callGemini = async (query, profile, items) => {
-          if (!CONFIG.GEMINI_KEY) return "🐈‍⬛ 主人沒給我能量 (API Key)，管家罷工中！";
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${CONFIG.GEMINI_KEY}`;
-          try {
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: query }] }],
-                systemInstruction: { parts: [{ text: `你是黑貓管家Gemini。主人Janine，黑貓Elven。用Z世代幽默感回覆，多用🐈‍⬛，不叫主人baby。` }] }
-              })
-            });
-            const res = await response.json();
-            return res.candidates?.[0]?.content?.parts?.[0]?.text || "🐈‍⬛ 貓星訊號不佳...";
-          } catch { return "🐈‍⬛ 連線失敗。"; }
-        };
-
-        // --- UI 組件 (簡化整合) ---
-        // (此處保留妳原本代碼的所有子組件邏輯，因篇幅限制整合為核心 App)
 
         function App() {
           const [activeTab, setActiveTab] = useState('home');
-          const [items, setItems] = useState(() => JSON.parse(localStorage.getItem('cat_log_v88')) || []);
-          const [profile, setProfile] = useState(() => JSON.parse(localStorage.getItem('cat_profile_v88')) || { name: 'Elven', birthday: '2020-01-01', weight: '5.2' });
-          const [waterDate, setWaterDate] = useState(() => new Date(localStorage.getItem('cat_water_v88') || Date.now()));
-          const [isAddOpen, setIsAddOpen] = useState(false);
+          const [items, setItems] = useState(() => {
+            try {
+              return JSON.parse(localStorage.getItem('cat_log_v88')) || [];
+            } catch { return []; }
+          });
+          
+          const [profile, setProfile] = useState(() => {
+            try {
+              return JSON.parse(localStorage.getItem('cat_profile_v88')) || { name: 'Elven', birthday: '2020-01-01', weight: '5.2' };
+            } catch { return { name: 'Elven', birthday: '2020-01-01', weight: '5.2' }; }
+          });
+
+          // 修正：更安全的日期初始化
+          const [waterDate, setWaterDate] = useState(() => {
+            const saved = localStorage.getItem('cat_water_v88');
+            return saved ? new Date(saved) : new Date();
+          });
 
           useEffect(() => {
             localStorage.setItem('cat_log_v88', JSON.stringify(items));
             localStorage.setItem('cat_profile_v88', JSON.stringify(profile));
-            localStorage.setItem('cat_water_v88', waterDate.toISOString());
+            // 修正：防止 toISOString 崩潰
+            if (waterDate instanceof Date && !isNaN(waterDate)) {
+              localStorage.setItem('cat_water_v88', waterDate.toISOString());
+            }
           }, [items, profile, waterDate]);
 
-          const handleSave = async (data) => {
-            const newItem = { ...data, id: Date.now() };
-            setItems([newItem, ...items]);
-            const success = await syncToNotion(newItem);
-            if (!success) alert("Notion 同步失敗，但已存在手機裡！");
+          const handleQuickAdd = () => {
+            const brand = prompt("品牌名稱？");
+            const price = prompt("花多少錢？");
+            if (brand && price) {
+              const newItem = {
+                id: Date.now(),
+                brand,
+                price: parseFloat(price) || 0,
+                category: '罐罐',
+                rating: 5,
+                date: new Date().toLocaleDateString()
+              };
+              setItems([newItem, ...items]);
+            }
           };
 
           return (
-            <div className="h-screen w-full flex justify-center items-center font-sans antialiased text-stone-800 select-none overflow-hidden">
-              <div className="w-full max-w-md h-full sm:h-[95vh] bg-stone-50 sm:rounded-[3.5rem] overflow-hidden flex flex-col relative shadow-2xl border border-white/50">
+            <div className="h-screen w-full flex justify-center items-center bg-stone-900 font-sans antialiased">
+              <div className="w-full max-w-md h-full bg-stone-50 overflow-hidden flex flex-col relative">
                 
-                <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
-                  {/* 首頁 */}
+                {/* 內容區 */}
+                <div className="flex-1 overflow-y-auto p-6 pb-32">
                   {activeTab === 'home' && (
-                    <div className="p-6 pt-12 animate-in">
-                      <div className="bg-white p-7 rounded-[2.8rem] shadow-sm mb-8 border border-stone-100 flex items-center gap-6">
-                        <div className="w-20 h-20 rounded-3xl bg-stone-900 flex items-center justify-center text-4xl shadow-xl border-4 border-white rotate-2">🐈‍⬛</div>
+                    <div className="space-y-6">
+                      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm flex items-center gap-4 border border-stone-100">
+                        <div className="w-16 h-16 rounded-2xl bg-black flex items-center justify-center text-3xl">🐈‍⬛</div>
                         <div>
-                          <h2 className="text-2xl font-black">{profile.name}</h2>
-                          <p className="text-stone-400 text-[10px] font-black uppercase tracking-widest mt-1">Master Black Cat 🐈‍⬛</p>
+                          <h2 className="text-xl font-bold">{profile.name}</h2>
+                          <p className="text-stone-400 text-xs">Elven 的黑貓管家已上線</p>
                         </div>
                       </div>
-                      {/* 這裡可以補上 WaterStation 邏輯 */}
-                      <div className="bg-stone-900 p-8 rounded-[3rem] text-white mb-8">
-                        <p className="text-[10px] opacity-50 font-black uppercase mb-1">Total Spending</p>
-                        <div className="text-4xl font-black">{formatPrice(items.reduce((a, b) => a + (Number(b.price) || 0), 0))}</div>
+
+                      <div className="bg-stone-900 p-8 rounded-[2.5rem] text-white">
+                        <p className="text-xs opacity-50 mb-1">本月總支出</p>
+                        <div className="text-3xl font-bold">
+                          {formatPrice(items.reduce((a, b) => a + (Number(b.price) || 0), 0))}
+                        </div>
                       </div>
+                      
+                      <button 
+                        onClick={() => setWaterDate(new Date())}
+                        className="w-full bg-blue-50 p-6 rounded-[2rem] flex justify-between items-center group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="p-3 bg-white rounded-xl shadow-sm">💧</div>
+                          <div className="text-left">
+                            <p className="text-sm font-bold text-blue-900">最後換水時間</p>
+                            <p className="text-xs text-blue-400">{waterDate.toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="text-blue-200 group-active:scale-90 transition-transform">➔</div>
+                      </button>
                     </div>
                   )}
 
-                  {/* 紀錄清單 */}
                   {activeTab === 'records' && (
-                    <div className="p-6 pt-12 space-y-4">
-                      <h1 className="text-3xl font-black mb-6">Log 🐈‍⬛</h1>
-                      {items.map(item => (
-                        <div key={item.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-stone-100">
-                          <div className="flex justify-between items-start">
+                    <div className="space-y-4">
+                      <h1 className="text-2xl font-bold mb-4">消費紀錄 📋</h1>
+                      {items.length === 0 ? (
+                        <p className="text-stone-400 text-center py-10">目前還沒有紀錄喔🐈‍⬛</p>
+                      ) : (
+                        items.map(item => (
+                          <div key={item.id} className="bg-white p-5 rounded-3xl border border-stone-100 flex justify-between items-center shadow-sm">
                             <div>
-                                <span className="text-[10px] font-black px-2 py-1 bg-stone-50 rounded-lg">{item.category}</span>
-                                <h3 className="text-lg font-black mt-1">{item.brand}</h3>
+                              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-tighter">{item.category}</p>
+                              <h3 className="font-bold text-stone-800">{item.brand}</h3>
                             </div>
-                            <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="text-stone-200"><Trash2 size={16}/></button>
+                            <div className="text-right">
+                              <p className="font-bold text-lg">{formatPrice(item.price)}</p>
+                              <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="text-stone-200">
+                                {Trash && <Trash size={14} />}
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex justify-between items-center mt-4">
-                            <div className="flex gap-1">{[...Array(item.rating)].map((_, i) => <Heart key={i} size={12} className="fill-orange-500 text-orange-500" />)}</div>
-                            <span className="text-xl font-black">{formatPrice(item.price)}</span>
-                          </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'ai' && (
+                    <div className="h-full flex flex-col items-center justify-center text-stone-400">
+                      <MessageSquare size={48} className="mb-4 opacity-20" />
+                      <p>AI 管家正在梳毛中，稍後片刻...</p>
                     </div>
                   )}
                 </div>
 
-                {/* 底部導覽 */}
-                <div className="bg-white border-t border-stone-100 px-6 py-5 flex justify-around absolute bottom-0 w-full z-40 pb-10 rounded-t-[3rem] shadow-2xl">
-                    <Home onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-stone-900' : 'text-stone-300'} />
-                    <List onClick={() => setActiveTab('records')} className={activeTab === 'records' ? 'text-stone-900' : 'text-stone-300'} />
-                    <Plus onClick={() => {
-                        const brand = prompt("品牌？");
-                        const price = prompt("金額？");
-                        if(brand && price) handleSave({brand, price, category: '罐罐', rating: 5, purchaseDate: new Date().toISOString().split('T')[0]});
-                    }} className="text-stone-900 bg-stone-100 p-1 rounded-lg" />
-                    <MessageCircle onClick={() => setActiveTab('ai')} className={activeTab === 'ai' ? 'text-stone-900' : 'text-stone-300'} />
+                {/* 導覽列 */}
+                <div className="absolute bottom-6 left-6 right-6 h-20 bg-white/80 backdrop-blur-lg rounded-[2.5rem] border border-white shadow-xl flex justify-around items-center px-4">
+                  <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-black' : 'text-stone-300'}>
+                    {Home && <Home size={24} />}
+                  </button>
+                  <button onClick={() => setActiveTab('records')} className={activeTab === 'records' ? 'text-black' : 'text-stone-300'}>
+                    {List && <List size={24} />}
+                  </button>
+                  <button onClick={handleQuickAdd} className="w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-transform">
+                    {Plus && <Plus size={24} />}
+                  </button>
+                  <button onClick={() => setActiveTab('ai')} className={activeTab === 'ai' ? 'text-black' : 'text-stone-300'}>
+                    {MessageSquare && <MessageSquare size={24} />}
+                  </button>
                 </div>
+
               </div>
             </div>
           );
@@ -182,6 +163,3 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
-    </script>
-</body>
-</html>
